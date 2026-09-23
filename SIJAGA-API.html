@@ -1,0 +1,1969 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIJAGA-API — Sistem Pemetaan Risiko & Prioritas Karhutla Indonesia</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            main: '#B71C1C',
+                            light: '#E53935',
+                            dark: '#7F0000',
+                            bg: '#FFEBEE',
+                            card: '#FFFFFF',
+                            subtle: '#F5F5F5',
+                            text: '#424242'
+                        },
+                        risk: {
+                            low: '#2E7D32',
+                            medium: '#F9A825',
+                            high: '#C62828'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- PapaParse for CSV parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <!-- Custom CSS Styles -->
+    <style>
+
+    body {
+        font-family: 'Inter', sans-serif;
+        background-color: #F8FAFC;
+        color: #334155;
+    }
+
+    .leaflet-container {
+        width: 100%;
+        height: 100%;
+        border-radius: 0.75rem;
+        z-index: 10;
+    }
+
+    .leaflet-popup-content-wrapper {
+        border-radius: 0.75rem;
+        padding: 0.25rem;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1),
+                    0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 4px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 4px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+    }
+
+    .sidebar-transition {
+        transition: transform 0.3s ease-in-out;
+    }
+
+
+    /* ==============================
+       FULL SCREEN MAP
+       ============================== */
+
+    #map-container:fullscreen {
+    width: 100vw !important;
+    height: 100vh !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    border: none !important;
+}
+
+#map-container:-webkit-full-screen {
+    width: 100vw !important;
+    height: 100vh !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    border: none !important;
+}
+
+/* Peta memenuhi container fullscreen */
+#map-container:fullscreen #leaflet-map,
+#map-container:-webkit-full-screen #leaflet-map {
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: 0 !important;
+}
+
+/* Legend tetap di atas peta */
+#map-container:fullscreen .absolute,
+#map-container:-webkit-full-screen .absolute {
+    z-index: 9999 !important;
+}
+
+/* Tombol Fullscreen */
+.leaflet-control-fullscreen a {
+    width: 34px;
+    height: 34px;
+    line-height: 34px;
+    text-align: center;
+    font-size: 16px;
+    color: #1f2937;
+    background: #ffffff;
+}
+
+.leaflet-control-fullscreen a:hover {
+    background: #f3f4f6;
+    color: #b91c1c;
+}
+</style>
+
+</head>
+<body class="bg-gray-50 flex h-screen overflow-hidden">
+
+    <!-- SIDEBAR NAVIGATION -->
+    <aside id="sidebar" class="bg-white border-r border-gray-200 w-64 flex-shrink-0 flex flex-col justify-between z-30 sidebar-transition absolute md:relative h-full -translate-x-full md:translate-x-0 shadow-lg md:shadow-none">
+        <div>
+            <!-- Header Brand -->
+            <div class="p-5 border-b border-gray-100 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-red-700 to-red-500 flex items-center justify-center text-white shadow-md shadow-red-200">
+                        <i class="fa-solid font-bold fa-fire-flame-curved text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-black text-xl tracking-tight text-red-800 leading-none">SIJAGA-API</h1>
+                        <span class="text-[10px] font-semibold tracking-wider text-red-600 uppercase">Decision Support System</span>
+                    </div>
+                </div>
+                <button id="close-sidebar-btn" class="md:hidden text-gray-500 hover:text-gray-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Navigation Links -->
+            <nav class="p-3 space-y-1">
+                <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all bg-red-50 text-red-700 shadow-sm">
+                    <i class="fa-solid fa-chart-pie w-5"></i>
+                    <span>Dashboard Utama</span>
+                </button>
+                <button onclick="switchTab('map')" id="nav-map" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-all">
+                    <i class="fa-solid fa-map-location-dot w-5"></i>
+                    <span>Peta Risiko</span>
+                </button>
+                <button onclick="switchTab('priority')" id="nav-priority" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-all">
+                    <i class="fa-solid fa-shield-halved w-5"></i>
+                    <span>Prioritas Pencegahan</span>
+                </button>
+                <button onclick="switchTab('factors')" id="nav-factors" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-all">
+                    <i class="fa-solid fa-chart-bar w-5"></i>
+                    <span>Analisis Faktor Risiko</span>
+                </button>
+                <button onclick="switchTab('data')" id="nav-data" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-all">
+                    <i class="fa-solid fa-table w-5"></i>
+                    <span>Data Wilayah (2025)</span>
+                </button>
+                <button onclick="switchTab('about')" id="nav-about" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-all">
+                    <i class="fa-solid fa-circle-info w-5"></i>
+                    <span>Tentang SIJAGA-API</span>
+                </button>
+            </nav>
+        </div>
+
+        <!-- Sidebar Footer / Data Source Status -->
+        <div class="p-4 border-t border-gray-100 bg-gray-50 rounded-b-lg">
+            <div class="flex items-center space-x-2 text-xs text-gray-500 mb-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span class="font-semibold text-gray-700">Random Forest Classifier</span>
+            </div>
+            <p class="text-[11px] text-gray-500 leading-tight">Pengujian Data 2025 (N = 513 Kabupaten/Kota Indonesia)</p>
+            <div class="mt-3 pt-2 border-t border-gray-200 flex justify-between items-center text-[10px] text-gray-400">
+                <span>Versi Prototipe 2.1</span>
+                <span>LKTI / Riset 2026</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT CONTAINER -->
+    <div class="flex-1 flex flex-col h-full overflow-hidden">
+        
+        <!-- Top App Bar / Header -->
+        <header class="bg-white border-b border-gray-200 px-6 py-3.5 flex items-center justify-between flex-shrink-0 z-20">
+            <div class="flex items-center space-x-4">
+                <button id="open-sidebar-btn" class="md:hidden text-gray-600 hover:text-gray-900 focus:outline-none">
+                    <i class="fa-solid fa-bars text-xl"></i>
+                </button>
+                <div>
+                    <h2 id="page-title" class="text-lg font-extrabold text-gray-900 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-pie text-red-700"></i>
+                        <span>Dashboard Utama & Ringkasan Risiko</span>
+                    </h2>
+                    <p class="text-xs text-gray-500 hidden sm:block">Sistem Informasi Pemetaan Risiko dan Prioritas Pencegahan Kebakaran Hutan dan Lahan Indonesia</p>
+                </div>
+            </div>
+
+            <!-- Header Quick Controls -->
+            <div class="flex items-center space-x-3">
+                <label for="csv-upload-input" class="cursor-pointer bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs px-3 py-1.5 rounded-lg font-medium shadow-sm flex items-center space-x-1.5 transition">
+                    <i class="fa-solid fa-file-import text-red-600"></i>
+                    <span class="hidden sm:inline">Muat CSV Penelitian</span>
+                    <input type="file" id="csv-upload-input" accept=".csv" class="hidden">
+                </label>
+                
+                <button onclick="exportFilteredCSV()" class="bg-red-800 hover:bg-red-900 text-white text-xs px-3.5 py-1.5 rounded-lg font-medium shadow-sm flex items-center space-x-1.5 transition">
+                    <i class="fa-solid fa-download"></i>
+                    <span class="hidden sm:inline">Ekspor CSV</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Dynamic Page View Container -->
+        <main class="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 bg-slate-50">
+
+            <!-- 1. PAGE DASHBOARD -->
+            <section id="page-dashboard" class="page-content space-y-6">
+                <!-- Banner Info Deskripsi -->
+                <div class="bg-gradient-to-r from-red-900 via-red-800 to-red-700 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
+                    <div class="absolute -right-10 -bottom-10 opacity-10 text-white text-9xl font-black pointer-events-none">
+                        <i class="fa-solid fa-fire"></i>
+                    </div>
+                    <div class="relative z-10 max-w-3xl">
+                        <div class="inline-flex items-center space-x-2 bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-semibold mb-3">
+                            <i class="fa-solid fa-shield-heart text-amber-300"></i>
+                            <span>Decision Support System Prototipe</span>
+                        </div>
+                        <h3 class="text-2xl font-bold mb-2 leading-tight">SIJAGA-API</h3>
+                        <p class="text-sm text-red-100 leading-relaxed font-light">
+                            SIJAGA-API merupakan prototipe sistem pendukung keputusan berbasis machine learning dan informasi penginderaan jauh untuk mengidentifikasi tingkat risiko kebakaran hutan dan lahan serta menentukan wilayah prioritas pencegahan di Indonesia.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- KPI Cards Section -->
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                    <!-- Total Wilayah -->
+                    <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm flex flex-col justify-between hover:shadow-md transition">
+                        <div class="flex items-center justify-between text-gray-500 mb-2">
+                            <span class="text-xs font-semibold uppercase tracking-wider">Total Wilayah</span>
+                            <span class="p-2 bg-slate-100 text-slate-700 rounded-lg text-xs"><i class="fa-solid fa-earth-asia"></i></span>
+                        </div>
+                        <div>
+                            <span id="kpi-total" class="text-2xl font-black text-gray-900">513</span>
+                            <span class="text-xs text-gray-500 block mt-1">Kabupaten / Kota</span>
+                        </div>
+                    </div>
+
+                    <!-- Risiko Rendah -->
+                    <div class="bg-white rounded-xl p-4 border border-emerald-100 shadow-sm flex flex-col justify-between hover:shadow-md transition">
+                        <div class="flex items-center justify-between text-emerald-700 mb-2">
+                            <span class="text-xs font-semibold uppercase tracking-wider">Risiko Rendah</span>
+                            <span class="p-2 bg-emerald-50 rounded-lg text-xs"><i class="fa-solid fa-circle-check"></i></span>
+                        </div>
+                        <div>
+                            <span id="kpi-rendah" class="text-2xl font-black text-emerald-700">186</span>
+                            <span id="kpi-rendah-pct" class="text-xs font-medium text-emerald-600 block mt-1">36,26% dari total</span>
+                        </div>
+                    </div>
+
+                    <!-- Risiko Sedang -->
+                    <div class="bg-white rounded-xl p-4 border border-amber-100 shadow-sm flex flex-col justify-between hover:shadow-md transition">
+                        <div class="flex items-center justify-between text-amber-700 mb-2">
+                            <span class="text-xs font-semibold uppercase tracking-wider">Risiko Sedang</span>
+                            <span class="p-2 bg-amber-50 rounded-lg text-xs"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                        </div>
+                        <div>
+                            <span id="kpi-sedang" class="text-2xl font-black text-amber-600">177</span>
+                            <span id="kpi-sedang-pct" class="text-xs font-medium text-amber-600 block mt-1">34,50% dari total</span>
+                        </div>
+                    </div>
+
+                    <!-- Risiko Tinggi -->
+                    <div class="bg-white rounded-xl p-4 border border-red-100 shadow-sm flex flex-col justify-between hover:shadow-md transition">
+                        <div class="flex items-center justify-between text-red-700 mb-2">
+                            <span class="text-xs font-semibold uppercase tracking-wider">Risiko Tinggi</span>
+                            <span class="p-2 bg-red-50 rounded-lg text-xs"><i class="fa-solid fa-fire text-red-600"></i></span>
+                        </div>
+                        <div>
+                            <span id="kpi-tinggi" class="text-2xl font-black text-red-700">150</span>
+                            <span id="kpi-tinggi-pct" class="text-xs font-medium text-red-600 block mt-1">29,24% dari total</span>
+                        </div>
+                    </div>
+
+                    <!-- Prioritas Utama -->
+                    <div class="bg-red-900 text-white rounded-xl p-4 shadow-sm flex flex-col justify-between col-span-2 sm:col-span-1">
+                        <div class="flex items-center justify-between text-red-200 mb-2">
+                            <span class="text-xs font-semibold uppercase tracking-wider">Prioritas Utama</span>
+                            <span class="p-2 bg-red-800 rounded-lg text-xs text-white"><i class="fa-solid fa-circle-exclamation"></i></span>
+                        </div>
+                        <div>
+                            <span id="kpi-prioritas" class="text-2xl font-black text-white">150</span>
+                            <span class="text-xs text-red-200 block mt-1">Butuh aksi pencegahan</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Global Filter Bar -->
+                <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-wrap gap-3 items-center justify-between">
+                    <div class="flex items-center space-x-2 text-xs font-bold text-gray-700">
+                        <i class="fa-solid fa-filter text-red-700"></i>
+                        <span>Filter Interaktif:</span>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-3 flex-1">
+                        <!-- Select Provinsi -->
+                        <select id="filter-provinsi" onchange="applyGlobalFilters()" class="bg-gray-50 border border-gray-300 text-gray-800 text-xs rounded-lg p-2 font-medium focus:ring-red-500 focus:border-red-500">
+                            <option value="">Semua Provinsi</option>
+                        </select>
+
+                        <!-- Select Risiko -->
+                        <select id="filter-risiko" onchange="applyGlobalFilters()" class="bg-gray-50 border border-gray-300 text-gray-800 text-xs rounded-lg p-2 font-medium focus:ring-red-500 focus:border-red-500">
+                            <option value="">Semua Tingkat Risiko</option>
+                            <option value="Rendah">Risiko Rendah</option>
+                            <option value="Sedang">Risiko Sedang</option>
+                            <option value="Tinggi">Risiko Tinggi</option>
+                        </select>
+
+                        <!-- Search Box -->
+                        <div class="relative flex-1 min-w-[200px]">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-gray-400"></i>
+                            <input type="text" id="filter-search" onkeyup="applyGlobalFilters()" placeholder="Cari kabupaten/kota..." class="w-full bg-gray-50 border border-gray-300 text-gray-800 text-xs rounded-lg pl-8 pr-3 py-2 font-medium focus:ring-red-500 focus:border-red-500">
+                        </div>
+                    </div>
+
+                    <button onclick="resetGlobalFilters()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold px-3 py-2 rounded-lg transition flex items-center space-x-1">
+                        <i class="fa-solid fa-rotate-left"></i>
+                        <span>Reset Filter</span>
+                    </button>
+                </div>
+
+                <!-- Charts Row -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Donut Chart: Distribusi Risiko -->
+                    <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
+                        <div class="flex justify-between items-center mb-4">
+                            <div>
+                                <h4 class="font-bold text-gray-800 text-sm">Distribusi Tingkat Risiko Kebakaran</h4>
+                                <p class="text-xs text-gray-500">Proporsi klasifikasi risiko hasil model Random Forest</p>
+                            </div>
+                            <span class="text-xs bg-red-50 text-red-700 px-2.5 py-1 rounded-full font-semibold">513 Wilayah</span>
+                        </div>
+                        <div class="relative h-64 flex items-center justify-center">
+                            <canvas id="chart-risk-donut"></canvas>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-gray-100 text-center text-xs">
+                            <div>
+                                <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-600 mr-1"></span>
+                                <span class="text-gray-600">Rendah: <strong class="text-gray-800" id="legend-rendah">186</strong></span>
+                            </div>
+                            <div>
+                                <span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-500 mr-1"></span>
+                                <span class="text-gray-600">Sedang: <strong class="text-gray-800" id="legend-sedang">177</strong></span>
+                            </div>
+                            <div>
+                                <span class="inline-block w-2.5 h-2.5 rounded-full bg-red-600 mr-1"></span>
+                                <span class="text-gray-600">Tinggi: <strong class="text-gray-800" id="legend-tinggi">150</strong></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bar Chart: Distribusi per Pulau/Provinsi Top -->
+                    <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
+                        <div class="flex justify-between items-center mb-4">
+                            <div>
+                                <h4 class="font-bold text-gray-800 text-sm">Sebaran Risiko Tinggi per Pulau Utama</h4>
+                                <p class="text-xs text-gray-500">Jumlah kabupaten/kota risiko tinggi (Prioritas Utama)</p>
+                            </div>
+                            <i class="fa-solid fa-layer-group text-red-600"></i>
+                        </div>
+                        <div class="relative h-64">
+                            <canvas id="chart-island-bar"></canvas>
+                        </div>
+                        <p class="text-[11px] text-gray-400 mt-2 text-center">Wilayah dengan prioritas utama memerlukan alokasi pencegahan paling intensif.</p>
+                    </div>
+                </div>
+
+                <!-- Preview Top 5 High Priority Table -->
+                <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                    <div class="flex justify-between items-center mb-4">
+                        <div>
+                            <h4 class="font-bold text-gray-800 text-sm">Top 5 Wilayah Probabilitas Risiko Tertinggi</h4>
+                            <p class="text-xs text-gray-500">Kabupaten/Kota dengan risiko paling kritis yang membutuhkan intervensi dini</p>
+                        </div>
+                        <button onclick="switchTab('priority')" class="text-xs text-red-700 hover:text-red-900 font-bold flex items-center space-x-1">
+                            <span>Lihat Selengkapnya</span>
+                            <i class="fa-solid fa-arrow-right"></i>
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="border-b border-gray-200 bg-gray-50 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                                    <th class="p-3">Peringkat</th>
+                                    <th class="p-3">Kabupaten / Kota</th>
+                                    <th class="p-3">Provinsi</th>
+                                    <th class="p-3">Probabilitas Risiko</th>
+                                    <th class="p-3">Tingkat Risiko</th>
+                                    <th class="p-3">Prioritas Pencegahan</th>
+                                </tr>
+                            </thead>
+                            <tbody id="top5-preview-table-body" class="divide-y divide-gray-100 text-xs">
+                                <!-- Dynamic rows via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. PAGE PETA RISIKO -->
+            <section id="page-map" class="page-content hidden space-y-4">
+                <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-wrap gap-3 items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 rounded-lg bg-red-100 text-red-700 flex items-center justify-center text-sm font-bold">
+                            <i class="fa-solid fa-map"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-gray-800 text-sm">Peta Risiko Kebakaran Hutan & Lahan Indonesia</h3>
+                            <p class="text-xs text-gray-500">Klik pada penanda wilayah untuk menampilkan parameter spasial dan meteorologi</p>
+                        </div>
+                    </div>
+
+                    <!-- Map Specific Filters -->
+                    <div class="flex flex-wrap items-center gap-2">
+                        <select id="map-filter-prov" onchange="updateMapFilters()" class="bg-gray-50 border border-gray-300 text-gray-800 text-xs rounded-lg p-2 font-medium">
+                            <option value="">Semua Provinsi</option>
+                        </select>
+                        <select id="map-filter-risk" onchange="updateMapFilters()" class="bg-gray-50 border border-gray-300 text-gray-800 text-xs rounded-lg p-2 font-medium">
+                            <option value="">Semua Tingkat Risiko</option>
+                            <option value="Tinggi">🔴 Risiko Tinggi</option>
+                            <option value="Sedang">🟡 Risiko Sedang</option>
+                            <option value="Rendah">🟢 Risiko Rendah</option>
+                        </select>
+                        <button onclick="resetMapFilters()" class="bg-gray-100 text-gray-700 text-xs px-2.5 py-2 rounded-lg font-semibold hover:bg-gray-200">Reset</button>
+                    </div>
+                </div>
+
+                <!-- Map Container Card -->
+              <div id="map-container"
+     class="bg-white p-2 rounded-xl border border-gray-200 shadow-sm relative h-[600px] flex flex-col">
+
+    <!-- Leaflet Map Canvas -->
+    <div id="leaflet-map" class="w-full flex-1 rounded-lg"></div>
+
+    <!-- Floating Legend Overlay -->
+ <div id="map-legend"
+     class="absolute bottom-6 right-6 z-[1000] bg-white/95 backdrop-blur-md p-3.5 rounded-xl border border-gray-200 shadow-lg text-xs space-y-2"
+     style="cursor: grab; user-select: none;">
+
+    <h5 class="font-bold text-gray-800 border-b border-gray-200 pb-1.5 flex items-center justify-between gap-4">
+        <span>Legenda Risiko</span>
+        <i class="fa-solid fa-layer-group text-gray-400"></i>
+    </h5>
+
+    <div class="space-y-1.5 font-medium">
+
+        <div class="flex items-center space-x-2">
+            <span class="w-3.5 h-3.5 rounded-full bg-red-600 inline-block border border-white shadow-sm"></span>
+            <span class="text-gray-700">Risiko Tinggi (≥ 0,66)</span>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <span class="w-3.5 h-3.5 rounded-full bg-amber-500 inline-block border border-white shadow-sm"></span>
+            <span class="text-gray-700">Risiko Sedang (0,33 - 0,66)</span>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <span class="w-3.5 h-3.5 rounded-full bg-emerald-600 inline-block border border-white shadow-sm"></span>
+            <span class="text-gray-700">Risiko Rendah (&lt; 0,33)</span>
+        </div>
+
+    </div>
+</div>
+            </section>
+
+            <!-- 3. PAGE PRIORITAS PENCEGAHAN -->
+            <section id="page-priority" class="page-content hidden space-y-4">
+                <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                        <div>
+                            <h3 class="font-bold text-gray-900 text-base flex items-center gap-2">
+                                <i class="fa-solid fa-shield-halved text-red-700"></i>
+                                <span>Matriks Prioritas Pencegahan Kebakaran</span>
+                            </h3>
+                            <p class="text-xs text-gray-500 mt-0.5">Urutan wilayah kabupaten/kota teratas berdasarkan tingkat probabilitas risiko tertinggi hasil Random Forest</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="exportPriorityCSV()" class="bg-emerald-700 hover:bg-emerald-800 text-white text-xs px-3 py-2 rounded-lg font-medium transition flex items-center space-x-1">
+                                <i class="fa-solid fa-file-excel"></i>
+                                <span>Unduh Daftar Prioritas</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filters and Search -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                        <div>
+                            <label class="block text-[11px] font-semibold text-gray-500 mb-1">Cari Wilayah</label>
+                            <input type="text" id="priority-search" onkeyup="renderPriorityTable()" placeholder="Cari nama kabupaten/provinsi..." class="w-full bg-white border border-gray-300 text-xs rounded-lg p-2 font-medium">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-gray-500 mb-1">Filter Prioritas</label>
+                            <select id="priority-level-filter" onchange="renderPriorityTable()" class="w-full bg-white border border-gray-300 text-xs rounded-lg p-2 font-medium">
+                                <option value="">Semua Prioritas</option>
+                                <option value="Prioritas Utama">🔴 Prioritas Utama</option>
+                                <option value="Prioritas Menengah">🟡 Prioritas Menengah</option>
+                                <option value="Prioritas Rendah">🟢 Prioritas Rendah</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-gray-500 mb-1">Filter Provinsi</label>
+                            <select id="priority-prov-filter" onchange="renderPriorityTable()" class="w-full bg-white border border-gray-300 text-xs rounded-lg p-2 font-medium">
+                                <option value="">Semua Provinsi</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Priority Table -->
+                    <div class="overflow-x-auto border border-gray-200 rounded-lg">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-gray-100 border-b border-gray-200 text-[11px] font-bold text-gray-600 uppercase tracking-wider">
+                                    <th class="p-3 w-16 text-center">No</th>
+                                    <th class="p-3 cursor-pointer hover:bg-gray-200" onclick="sortPriorityTable('nama_kabupaten')">Kabupaten / Kota <i class="fa-solid fa-sort text-gray-400 ml-1"></i></th>
+                                    <th class="p-3 cursor-pointer hover:bg-gray-200" onclick="sortPriorityTable('provinsi')">Provinsi <i class="fa-solid fa-sort text-gray-400 ml-1"></i></th>
+                                    <th class="p-3 cursor-pointer hover:bg-gray-200 text-right" onclick="sortPriorityTable('probabilitas_risiko')">Probabilitas Risiko <i class="fa-solid fa-sort text-gray-400 ml-1"></i></th>
+                                    <th class="p-3 text-center">Tingkat Risiko</th>
+                                    <th class="p-3 text-center">Prioritas Pencegahan</th>
+                                </tr>
+                            </thead>
+                            <tbody id="priority-table-body" class="divide-y divide-gray-200 text-xs">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination Controls -->
+                    <div class="flex items-center justify-between mt-4 pt-3 border-t border-gray-100 text-xs">
+                        <span id="priority-pagination-info" class="text-gray-500">Menampilkan 1-10 dari 513 data</span>
+                        <div class="flex items-center space-x-1" id="priority-pagination-btns">
+                            <!-- Page buttons populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. PAGE ANALISIS FAKTOR RISIKO -->
+            <section id="page-factors" class="page-content hidden space-y-6">
+                <!-- Feature Importance Header & Chart -->
+                <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                    <div class="mb-4">
+                        <h3 class="font-bold text-gray-900 text-base flex items-center gap-2">
+                            <i class="fa-solid fa-chart-bar text-red-700"></i>
+                            <span>Feature Importance (Kontribusi Variabel Prediktor)</span>
+                        </h3>
+                        <p class="text-xs text-gray-500 mt-1">
+                            Fitur importance menggambarkan pentingnya setiap parameter spasial & meteorologi dalam proses pembuatan pohon keputusan pada model Random Forest.
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
+                        <div class="lg:col-span-2 relative h-72">
+                            <canvas id="chart-feature-importance"></canvas>
+                        </div>
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 text-xs">
+                            <h5 class="font-bold text-gray-800 border-b border-slate-200 pb-2">Peringkat Kontribusi Variabel</h5>
+                            <div id="feature-ranking-list" class="space-y-2">
+                                <!-- Dynamic ranking items -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs flex items-start space-x-2">
+                        <i class="fa-solid fa-triangle-exclamation text-amber-600 mt-0.5"></i>
+                        <p class="leading-relaxed">
+                            <strong>Catatan Metodologis:</strong> Feature importance menunjukkan kontribusi relatif setiap variabel terhadap keputusan model Random Forest. Nilai tersebut tidak diinterpretasikan sebagai hubungan sebab-akibat langsung.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Satellite Image Integration Card Workflow -->
+                <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                    <div class="border-b border-gray-100 pb-3">
+                        <h4 class="font-bold text-gray-900 text-base flex items-center gap-2">
+                            <i class="fa-solid fa-satellite text-red-700"></i>
+                            <span>Integrasi Informasi Citra Satelit</span>
+                        </h4>
+                        <p class="text-xs text-gray-500">
+                            Penjelasan alur ekstraksi parameter penginderaan jauh (NDVI & Tutupan Lahan) ke dalam model prediksi
+                        </p>
+                    </div>
+
+                    <!-- Flow Diagram Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-7 gap-2 items-center text-center my-4">
+                        <div class="bg-red-50 border border-red-200 p-3 rounded-xl">
+                            <i class="fa-solid fa-satellite text-xl text-red-700 mb-1"></i>
+                            <h6 class="font-bold text-gray-800 text-xs">Citra Satelit</h6>
+                            <span class="text-[10px] text-gray-500 block">Sentinel / MODIS</span>
+                        </div>
+                        <div class="text-gray-400 font-bold hidden md:block"><i class="fa-solid fa-chevron-right"></i></div>
+
+                        <div class="bg-red-50 border border-red-200 p-3 rounded-xl">
+                            <i class="fa-solid fa-seedling text-xl text-emerald-600 mb-1"></i>
+                            <h6 class="font-bold text-gray-800 text-xs">Informasi Vegetasi & Tutupan</h6>
+                            <span class="text-[10px] text-gray-500 block">Kekeringan / Kerapatan</span>
+                        </div>
+                        <div class="text-gray-400 font-bold hidden md:block"><i class="fa-solid fa-chevron-right"></i></div>
+
+                        <div class="bg-amber-50 border border-amber-200 p-3 rounded-xl">
+                            <i class="fa-solid fa-chart-line text-xl text-amber-600 mb-1"></i>
+                            <h6 class="font-bold text-gray-800 text-xs">NDVI + Tutupan Lahan</h6>
+                            <span class="text-[10px] text-amber-700 block font-semibold">Importance: 0,1949</span>
+                        </div>
+                        <div class="text-gray-400 font-bold hidden md:block"><i class="fa-solid fa-chevron-right"></i></div>
+
+                        <div class="bg-gray-100 border border-gray-300 p-3 rounded-xl">
+                            <i class="fa-solid fa-gears text-xl text-gray-700 mb-1"></i>
+                            <h6 class="font-bold text-gray-800 text-xs">Random Forest</h6>
+                            <span class="text-[10px] text-gray-500 block">Algoritma Ensemble</span>
+                        </div>
+                    </div>
+
+                    <p class="text-xs text-gray-600 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <i class="fa-solid fa-info-circle text-red-700 mr-1"></i>
+                        Informasi citra satelit dalam penelitian ini direpresentasikan melalui variabel <strong>NDVI (Normalized Difference Vegetation Index)</strong> dan klasifikasi <strong>Tutupan Lahan</strong>. Model Random Forest memproses variabel numerik hasil ekstraksi penginderaan jauh yang telah digabungkan dengan faktor meteorologi (Suhu, Kelembapan, Curah Hujan, Kecepatan Angin) dan spasial (Elevasi, Jarak ke Jalan). Variabel NDVI menjadi variabel terpenting kedua dalam model dengan kontribusi sebesar <strong>0,1949 (19,49%)</strong>.
+                    </p>
+                </div>
+            </section>
+
+            <!-- 5. PAGE DATA WILAYAH -->
+            <section id="page-data" class="page-content hidden space-y-4">
+                <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <h3 class="font-bold text-gray-900 text-base flex items-center gap-2">
+                                <i class="fa-solid fa-database text-red-700"></i>
+                                <span>Dataset Hasil Pengujian Tahun 2025</span>
+                            </h3>
+                            <p class="text-xs text-gray-500">Tabel lengkap 513 kabupaten/kota dengan parameter lingkungan, spasial, dan hasil prediksi probabilitas model</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="exportFullCSV()" class="bg-red-800 hover:bg-red-900 text-white text-xs px-3 py-2 rounded-lg font-medium shadow-sm transition flex items-center space-x-1">
+                                <i class="fa-solid fa-download"></i>
+                                <span>Ekspor Dataset CSV</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Search & Filters -->
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-gray-50 p-3 rounded-lg border border-gray-200 text-xs">
+                        <div>
+                            <label class="block font-semibold text-gray-600 mb-1">Cari Wilayah</label>
+                            <input type="text" id="full-data-search" onkeyup="renderFullDataTable()" placeholder="Ketik kabupaten/provinsi..." class="w-full bg-white border border-gray-300 rounded-lg p-2 font-medium">
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-gray-600 mb-1">Filter Provinsi</label>
+                            <select id="full-data-prov-filter" onchange="renderFullDataTable()" class="w-full bg-white border border-gray-300 rounded-lg p-2 font-medium">
+                                <option value="">Semua Provinsi</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-gray-600 mb-1">Filter Tingkat Risiko</label>
+                            <select id="full-data-risk-filter" onchange="renderFullDataTable()" class="w-full bg-white border border-gray-300 rounded-lg p-2 font-medium">
+                                <option value="">Semua Risiko</option>
+                                <option value="Tinggi">Risiko Tinggi</option>
+                                <option value="Sedang">Risiko Sedang</option>
+                                <option value="Rendah">Risiko Rendah</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-gray-600 mb-1">Baris per Halaman</label>
+                            <select id="full-data-page-size" onchange="renderFullDataTable()" class="w-full bg-white border border-gray-300 rounded-lg p-2 font-medium">
+                                <option value="10">10 Baris</option>
+                                <option value="25">25 Baris</option>
+                                <option value="50">50 Baris</option>
+                                <option value="100">100 Baris</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Data Table -->
+                    <div class="overflow-x-auto border border-gray-200 rounded-lg custom-scrollbar">
+                        <table class="w-full text-left border-collapse whitespace-nowrap text-xs">
+                            <thead>
+                                <tr class="bg-gray-100 border-b border-gray-200 font-bold text-gray-600 uppercase tracking-wider text-[11px]">
+                                    <th class="p-2.5">Kabupaten / Kota</th>
+                                    <th class="p-2.5">Provinsi</th>
+                                    <th class="p-2.5">Pulau</th>
+                                    <th class="p-2.5">Tahun</th>
+                                    <th class="p-2.5">Suhu (°C)</th>
+                                    <th class="p-2.5">Hujan (mm)</th>
+                                    <th class="p-2.5">Kelembapan (%)</th>
+                                    <th class="p-2.5">Angin (km/h)</th>
+                                    <th class="p-2.5">NDVI</th>
+                                    <th class="p-2.5">Tutupan Lahan</th>
+                                    <th class="p-2.5">Elevasi (m)</th>
+                                    <th class="p-2.5">Jarak Jalan (km)</th>
+                                    <th class="p-2.5">Hotspot Count</th>
+                                    <th class="p-2.5">Prob. Risiko</th>
+                                    <th class="p-2.5">Tingkat Risiko</th>
+                                    <th class="p-2.5">Prioritas</th>
+                                </tr>
+                            </thead>
+                            <tbody id="full-data-table-body" class="divide-y divide-gray-200">
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="flex items-center justify-between pt-2 text-xs">
+                        <span id="full-data-pagination-info" class="text-gray-500">Menampilkan 1-10 dari 513 data</span>
+                        <div class="flex items-center space-x-1" id="full-data-pagination-btns"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 6. PAGE TENTANG SIJAGA-API -->
+            <section id="page-about" class="page-content hidden space-y-6">
+                <!-- Overview Header -->
+                <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-3">
+                    <div class="flex items-center space-x-3 text-red-800">
+                        <i class="fa-solid fa-circle-info text-2xl"></i>
+                        <h3 class="font-black text-xl">Tentang & Metodologi SIJAGA-API</h3>
+                    </div>
+                    <p class="text-xs text-gray-600 leading-relaxed">
+                        SIJAGA-API dikembangkan sebagai sistem pendukung keputusan presisi tinggi untuk membantu instansi pemadam kebakaran, BPBD, dan Kementerian Lingkungan Hidup & Kehutanan dalam merencanakan alokasi patroli dan pencegahan dini kebakaran hutan dan lahan secara terukur di seluruh wilayah Indonesia.
+                    </p>
+                </div>
+
+                <!-- Methodology Flow Card -->
+                <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                    <h4 class="font-bold text-gray-800 text-sm border-b border-gray-100 pb-2 flex items-center gap-2">
+                        <i class="fa-solid fa-diagram-project text-red-700"></i>
+                        <span>Tahapan Metodologi Penelitian</span>
+                    </h4>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                        <div class="p-3 bg-red-50/60 border border-red-100 rounded-lg">
+                            <span class="w-6 h-6 rounded-full bg-red-700 text-white font-bold inline-flex items-center justify-center text-xs mb-2">1</span>
+                            <h5 class="font-bold text-gray-800">Pengumpulan Data</h5>
+                            <p class="text-gray-500 text-[11px] mt-1">Data lingkungan, spasial, & penginderaan jauh (NDVI, meteorologi, elevasi, aksesibilitas).</p>
+                        </div>
+                        <div class="p-3 bg-red-50/60 border border-red-100 rounded-lg">
+                            <span class="w-6 h-6 rounded-full bg-red-700 text-white font-bold inline-flex items-center justify-center text-xs mb-2">2</span>
+                            <h5 class="font-bold text-gray-800">Preprocessing Data</h5>
+                            <p class="text-gray-500 text-[11px] mt-1">Pembersihan data, normalisasi, pencocokan spatial join ke level kabupaten/kota.</p>
+                        </div>
+                        <div class="p-3 bg-red-50/60 border border-red-100 rounded-lg">
+                            <span class="w-6 h-6 rounded-full bg-red-700 text-white font-bold inline-flex items-center justify-center text-xs mb-2">3</span>
+                            <h5 class="font-bold text-gray-800">Pembagian Waktu</h5>
+                            <p class="text-gray-500 text-[11px] mt-1">Data latih (2020–2024) dan data pengujian temporal independen (2025).</p>
+                        </div>
+                        <div class="p-3 bg-red-50/60 border border-red-100 rounded-lg">
+                            <span class="w-6 h-6 rounded-full bg-red-700 text-white font-bold inline-flex items-center justify-center text-xs mb-2">4</span>
+                            <h5 class="font-bold text-gray-800">Pemodelan RF</h5>
+                            <p class="text-gray-500 text-[11px] mt-1">Random Forest Classifier untuk memprediksi probabilitas keterjadian hotspot.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Model Evaluation & Confusion Matrix -->
+ <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+    <!-- Metrics Card -->
+    <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
+
+        <h4 class="font-bold text-gray-800 text-sm border-b border-gray-100 pb-2">
+            Hasil Evaluasi Kinerja Model (Testing 2025)
+        </h4>
+
+        <div class="grid grid-cols-2 gap-3 text-center">
+
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <span class="text-gray-500 text-[11px] block">Accuracy</span>
+                <span class="text-xl font-black text-gray-800">92,98%</span>
+            </div>
+
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <span class="text-gray-500 text-[11px] block">Precision</span>
+                <span class="text-xl font-black text-gray-800">93,15%</span>
+            </div>
+
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <span class="text-gray-500 text-[11px] block">Recall</span>
+                <span class="text-xl font-black text-gray-800">99,79%</span>
+            </div>
+
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <span class="text-gray-500 text-[11px] block">F1-Score</span>
+                <span class="text-xl font-black text-gray-800">96,36%</span>
+            </div>
+
+        </div>
+
+        <div class="p-3 bg-red-50 rounded-lg border border-red-200 text-center">
+            <span class="text-xs text-red-700 font-semibold block">
+                ROC-AUC Score
+            </span>
+            <span class="text-2xl font-black text-red-800">
+                68,08%
+            </span>
+        </div>
+
+    </div>
+
+                    <!-- Confusion Matrix Visual -->
+ <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-3">
+
+    <h4 class="font-bold text-gray-800 text-sm border-b border-gray-100 pb-2">
+        Confusion Matrix (Data Pengujian 2025)
+    </h4>
+
+    <div class="grid grid-cols-2 gap-3 text-center my-2 text-xs">
+
+        <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+            <span class="text-gray-500 font-medium block">True Negative (TN)</span>
+            <span class="text-2xl font-black text-emerald-700">1</span>
+            <span class="text-[10px] text-gray-400 mt-1 block">
+                Benar diprediksi Tidak Ada Hotspot
+            </span>
+        </div>
+
+        <div class="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+            <span class="text-gray-500 font-medium block">False Positive (FP)</span>
+            <span class="text-2xl font-black text-amber-700">35</span>
+            <span class="text-[10px] text-gray-400 mt-1 block">
+                Salah diprediksi Ada Hotspot
+            </span>
+        </div>
+
+        <div class="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+            <span class="text-gray-500 font-medium block">False Negative (FN)</span>
+            <span class="text-2xl font-black text-amber-700">1</span>
+            <span class="text-[10px] text-gray-400 mt-1 block">
+                Hotspot Luput (Missed)
+            </span>
+        </div>
+
+        <div class="p-4 bg-red-50 border border-red-200 rounded-xl">
+            <span class="text-gray-500 font-medium block">True Positive (TP)</span>
+            <span class="text-2xl font-black text-red-700">476</span>
+            <span class="text-[10px] text-gray-400 mt-1 block">
+                Benar diprediksi Ada Hotspot
+            </span>
+
+                <!-- Classification Rules Card -->
+                <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-3 text-xs">
+                    <h4 class="font-bold text-gray-800 text-sm border-b border-gray-100 pb-2">Aturan Klasifikasi Threshold Probabilitas Risiko</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                            <span class="font-bold text-emerald-800 block">0,00 – 0,33</span>
+                            <span class="text-emerald-700 font-semibold">🟢 Risiko Rendah</span>
+                            <p class="text-gray-500 text-[11px] mt-1">Prioritas Pencegahan: Prioritas Rendah</p>
+                        </div>
+                        <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                            <span class="font-bold text-amber-800 block">0,33 – 0,66</span>
+                            <span class="text-amber-700 font-semibold">🟡 Risiko Sedang</span>
+                            <p class="text-gray-500 text-[11px] mt-1">Prioritas Pencegahan: Prioritas Menengah</p>
+                        </div>
+                        <div class="p-3 bg-red-50 border border-red-200 rounded-lg">
+                            <span class="font-bold text-red-800 block">0,66 – 1,00</span>
+                            <span class="text-red-700 font-semibold">🔴 Risiko Tinggi</span>
+                            <p class="text-gray-500 text-[11px] mt-1">Prioritas Pencegahan: Prioritas Utama</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Important Disclaimer Note -->
+                <div class="p-4 bg-gray-100 border border-gray-300 rounded-xl text-xs text-gray-700 leading-relaxed flex items-start space-x-3">
+                    <i class="fa-solid fa-triangle-exclamation text-red-700 text-base mt-0.5"></i>
+                    <div>
+                        <strong class="text-gray-900 block mb-0.5">Catatan Penting Prototipe:</strong>
+                        “Model dikembangkan dan diuji menggunakan dataset simulasi sebagai prototype metodologi SIJAGA-API. Hasil model tidak dimaksudkan sebagai representasi langsung kondisi aktual kebakaran hutan dan lahan di Indonesia.”
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+    
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // Exact Research Feature Importance Data
+ const FEATURE_IMPORTANCE = [
+    { factor: "Kelembapan udara", importance: 0.1537, icon: "fa-droplet", color: "#2563eb" },
+    { factor: "Suhu udara", importance: 0.1425, icon: "fa-temperature-high", color: "#dc2626" },
+    { factor: "Curah hujan", importance: 0.1373, icon: "fa-cloud-rain", color: "#0284c7" },
+    { factor: "NDVI", importance: 0.1353, icon: "fa-leaf", color: "#16a34a" },
+    { factor: "Jarak ke jalan", importance: 0.1067, icon: "fa-road", color: "#475569" },
+    { factor: "Kecepatan angin", importance: 0.1047, icon: "fa-wind", color: "#64748b" },
+    { factor: "Elevasi", importance: 0.0965, icon: "fa-mountain", color: "#78350f" },
+    { factor: "Tutupan lahan hutan primer", importance: 0.0279, icon: "fa-tree", color: "#166534" },
+    { factor: "Tutupan lahan permukiman", importance: 0.0240, icon: "fa-house", color: "#9333ea" },
+    { factor: "Tutupan lahan gambut", importance: 0.0200, icon: "fa-water", color: "#0f766e" },
+    { factor: "Tutupan lahan perkebunan", importance: 0.0190, icon: "fa-seedling", color: "#65a30d" },
+    { factor: "Tutupan lahan pertanian", importance: 0.0114, icon: "fa-wheat-awn", color: "#ca8a04" },
+    { factor: "Tutupan lahan semak belukar", importance: 0.0105, icon: "fa-leaf", color: "#84cc16" },
+    { factor: "Tutupan lahan hutan sekunder", importance: 0.0104, icon: "fa-tree", color: "#15803d" }
+];
+
+// Exact Research Top 5 Highest-Risk Regions - Testing 2025
+const EXPLICIT_TOP_REGIONS = [
+    { nama_kabupaten: "Bintan", provinsi: "Kepulauan Riau", pulau: "Sumatera", probabilitas_risiko: 1.0000, lat: 1.0833, lng: 104.4833 },
+    { nama_kabupaten: "Lebak", provinsi: "Banten", pulau: "Jawa", probabilitas_risiko: 0.9900, lat: -6.5644, lng: 106.2522 },
+    { nama_kabupaten: "Luwu Timur", provinsi: "Sulawesi Selatan", pulau: "Sulawesi", probabilitas_risiko: 0.9900, lat: -2.5828, lng: 121.1711 },
+    { nama_kabupaten: "Pekalongan", provinsi: "Jawa Tengah", pulau: "Jawa", probabilitas_risiko: 0.9867, lat: -7.0268, lng: 109.6197 },
+    { nama_kabupaten: "Wakatobi", provinsi: "Sulawesi Tenggara", pulau: "Sulawesi", probabilitas_risiko: 0.9833, lat: -5.3167, lng: 123.6000 }
+];
+
+
+        // List of Indonesian Provinces for realistic synthetic data expansion up to 513
+  const PROVINCE_MAP = [
+    { prov: "Aceh", pulau: "Sumatera", lat: 4.70, lng: 96.75 },
+    { prov: "Sumatera Utara", pulau: "Sumatera", lat: 2.11, lng: 99.54 },
+    { prov: "Sumatera Selatan", pulau: "Sumatera", lat: -3.31, lng: 104.00 },
+    { prov: "Bengkulu", pulau: "Sumatera", lat: -3.80, lng: 102.26 },
+    { prov: "Jambi", pulau: "Sumatera", lat: -1.61, lng: 103.61 },
+    { prov: "Riau", pulau: "Sumatera", lat: 0.51, lng: 101.44 },
+    { prov: "Lampung", pulau: "Sumatera", lat: -4.55, lng: 105.40 },
+    { prov: "Kepulauan Bangka Belitung", pulau: "Sumatera", lat: -2.74, lng: 106.44 },
+
+    { prov: "Banten", pulau: "Jawa", lat: -6.41, lng: 106.06 },
+    { prov: "DKI Jakarta", pulau: "Jawa", lat: -6.21, lng: 106.85 },
+    { prov: "Jawa Barat", pulau: "Jawa", lat: -6.88, lng: 107.60 },
+    { prov: "Jawa Tengah", pulau: "Jawa", lat: -7.15, lng: 110.14 },
+    { prov: "DI Yogyakarta", pulau: "Jawa", lat: -7.80, lng: 110.37 },
+    { prov: "Jawa Timur", pulau: "Jawa", lat: -7.53, lng: 112.23 },
+
+    { prov: "Bali", pulau: "Bali & Nusa Tenggara", lat: -8.40, lng: 115.18 },
+    { prov: "Nusa Tenggara Barat", pulau: "Bali & Nusa Tenggara", lat: -8.65, lng: 117.36 },
+    { prov: "Nusa Tenggara Timur", pulau: "Bali & Nusa Tenggara", lat: -8.65, lng: 121.07 },
+
+    { prov: "Kalimantan Barat", pulau: "Kalimantan", lat: -0.08, lng: 109.34 },
+    { prov: "Kalimantan Tengah", pulau: "Kalimantan", lat: -1.68, lng: 113.38 },
+    { prov: "Kalimantan Selatan", pulau: "Kalimantan", lat: -3.09, lng: 115.28 },
+    { prov: "Kalimantan Timur", pulau: "Kalimantan", lat: 0.53, lng: 116.41 },
+    { prov: "Kalimantan Utara", pulau: "Kalimantan", lat: 2.80, lng: 116.00 },
+
+    { prov: "Sulawesi Utara", pulau: "Sulawesi", lat: 0.62, lng: 123.98 },
+    { prov: "Sulawesi Tengah", pulau: "Sulawesi", lat: -1.43, lng: 121.44 },
+    { prov: "Sulawesi Selatan", pulau: "Sulawesi", lat: -3.66, lng: 119.97 },
+    { prov: "Sulawesi Tenggara", pulau: "Sulawesi", lat: -4.14, lng: 122.17 },
+    { prov: "Gorontalo", pulau: "Sulawesi", lat: 0.70, lng: 122.45 },
+    { prov: "Sulawesi Barat", pulau: "Sulawesi", lat: -2.50, lng: 119.35 },
+
+    { prov: "Maluku", pulau: "Papua & Maluku", lat: -3.24, lng: 130.15 },
+    { prov: "Maluku Utara", pulau: "Papua & Maluku", lat: 1.57, lng: 127.81 },
+    { prov: "Papua", pulau: "Papua & Maluku", lat: -4.26, lng: 138.08 },
+    { prov: "Papua Selatan", pulau: "Papua & Maluku", lat: -7.00, lng: 139.50 },
+    { prov: "Papua Tengah", pulau: "Papua & Maluku", lat: -3.50, lng: 136.50 },
+    { prov: "Papua Pegunungan", pulau: "Papua & Maluku", lat: -4.00, lng: 138.50 },
+    { prov: "Papua Barat", pulau: "Papua & Maluku", lat: -1.34, lng: 133.17 },
+    { prov: "Papua Barat Daya", pulau: "Papua & Maluku", lat: -1.10, lng: 131.25 }
+];
+
+        let dataset = [];
+        let filteredDataset = [];
+
+        function generateFullDataset() {
+            dataset = [];
+            
+            // 1. Add Explicit Top 10 provided in research
+            EXPLICIT_TOP_REGIONS.forEach(reg => {
+                let prob = reg.probabilitas_risiko;
+                dataset.push(buildRegencyObject(reg.nama_kabupaten, reg.provinsi, reg.pulau, prob, reg.lat, reg.lng));
+            });
+
+            // Count requirements: Total 513 -> High (150 - 10 top = 140), Medium (177), Low (186)
+            // Generate remaining High Risk (140)
+            for (let i = 0; i < 140; i++) {
+                let p = PROVINCE_MAP[i % PROVINCE_MAP.length];
+                let prob = 0.66 + Math.random() * (0.95 - 0.66);
+                let name = `Kab. Risk-Tinggi #${i + 11} (${p.prov})`;
+                let lat = p.lat + (Math.random() - 0.5) * 1.5;
+                let lng = p.lng + (Math.random() - 0.5) * 1.5;
+                dataset.push(buildRegencyObject(name, p.prov, p.pulau, parseFloat(prob.toFixed(4)), lat, lng));
+            }
+
+            // Generate Medium Risk (177) (0.33 to 0.6599)
+            for (let i = 0; i < 177; i++) {
+                let p = PROVINCE_MAP[(i + 5) % PROVINCE_MAP.length];
+                let prob = 0.33 + Math.random() * (0.659 - 0.33);
+                let name = `Kab. Risk-Sedang #${i + 1} (${p.prov})`;
+                let lat = p.lat + (Math.random() - 0.5) * 2.0;
+                let lng = p.lng + (Math.random() - 0.5) * 2.0;
+                dataset.push(buildRegencyObject(name, p.prov, p.pulau, parseFloat(prob.toFixed(4)), lat, lng));
+            }
+
+            // Generate Low Risk (186) (0.01 to 0.3299)
+            for (let i = 0; i < 186; i++) {
+                let p = PROVINCE_MAP[(i + 10) % PROVINCE_MAP.length];
+                let prob = 0.05 + Math.random() * (0.329 - 0.05);
+                let name = `Kab. Risk-Rendah #${i + 1} (${p.prov})`;
+                let lat = p.lat + (Math.random() - 0.5) * 2.5;
+                let lng = p.lng + (Math.random() - 0.5) * 2.5;
+                dataset.push(buildRegencyObject(name, p.prov, p.pulau, parseFloat(prob.toFixed(4)), lat, lng));
+            }
+
+            // Sort dataset initially by probability descending
+            dataset.sort((a, b) => b.probabilitas_risiko - a.probabilitas_risiko);
+            filteredDataset = [...dataset];
+        }
+
+        // Helper function to create consistent regency data matching risk levels
+        function buildRegencyObject(name, prov, pulau, prob, lat, lng) {
+            // Determine Risk Level & Priority based on strict threshold rules
+            let tingkat_risiko = "Rendah";
+            let prioritas_pencegahan = "Prioritas Rendah";
+            if (prob >= 0.66) {
+                tingkat_risiko = "Tinggi";
+                prioritas_pencegahan = "Prioritas Utama";
+            } else if (prob >= 0.33) {
+                tingkat_risiko = "Sedang";
+                prioritas_pencegahan = "Prioritas Menengah";
+            }
+
+            // Realistic Environmental parameters correlated with fire risk
+            let suhu = (26.0 + prob * 8.5 + (Math.random() * 2 - 1)).toFixed(1);
+            let hujan = (350 - prob * 280 + (Math.random() * 30 - 15)).toFixed(0);
+            let kelembapan = (88 - prob * 35 + (Math.random() * 6 - 3)).toFixed(1);
+            let angin = (8 + prob * 14 + (Math.random() * 4 - 2)).toFixed(1);
+            let ndvi = (0.75 - prob * 0.45 + (Math.random() * 0.08 - 0.04)).toFixed(4);
+            let elevasi = Math.floor(20 + Math.random() * 450);
+            let jarak_jalan = (1.2 + Math.random() * 12.0).toFixed(1);
+            let hotspot = prob > 0.66 ? Math.floor(prob * 45) : (prob > 0.33 ? Math.floor(prob * 10) : 0);
+
+            return {
+                nama_kabupaten: name,
+                provinsi: prov,
+                pulau: pulau,
+                tahun: 2025,
+                suhu_udara: parseFloat(suhu),
+                curah_hujan: parseFloat(hujan),
+                kelembapan_udara: parseFloat(kelembapan),
+                kecepatan_angin: parseFloat(angin),
+                NDVI: parseFloat(ndvi),
+                tutupan_lahan: prob > 0.5 ? "Hutan Sekunder / Semak" : "Lahan Pertanian / Vegetasi Lebat",
+                elevasi_m: elevasi,
+                jarak_ke_jalan_km: parseFloat(jarak_jalan),
+                hotspot_count: hotspot,
+                label_hotspot: hotspot > 0 ? 1 : 0,
+                probabilitas_risiko: prob,
+                tingkat_risiko: tingkat_risiko,
+                prioritas_pencegahan: prioritas_pencegahan,
+                lat: lat,
+                lng: lng
+            };
+        }
+
+        let mapInstance = null;
+        let mapMarkersLayer = null;
+        let riskDonutChart = null;
+        let islandBarChart = null;
+        let featureChart = null;
+
+        // Pagination states
+        let priorityCurrentPage = 1;
+        const priorityPageSize = 10;
+
+        let fullDataCurrentPage = 1;
+
+        window.onload = function() {
+            generateFullDataset();
+            populateProvinceDropdowns();
+            initCharts();
+            initMap();
+            applyGlobalFilters();
+            renderFeatureRanking();
+            setupSidebarToggle();
+        };
+
+        function initMap() {
+    if (mapInstance) return;
+
+    // ==============================
+    // INISIALISASI PETA INDONESIA
+    // ==============================
+    mapInstance = L.map('leaflet-map').setView([-2.5489, 118.0149], 5);
+
+    // ==============================
+    // BASEMAP PETA JALAN
+    // ==============================
+    const streetMap = L.tileLayer(
+        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap contributors'
+        }
+    );
+
+    // ==============================
+    // BASEMAP CITRA SATELIT
+    // ==============================
+    const satelliteMap = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        {
+            maxZoom: 19,
+            attribution: 'Tiles &copy; Esri'
+        }
+    );
+
+    // ==============================
+    // LABEL DI ATAS CITRA SATELIT
+    // ==============================
+    const satelliteLabels = L.tileLayer(
+        'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        {
+            maxZoom: 19,
+            opacity: 0.8,
+            attribution: 'Labels &copy; Esri'
+        }
+    );
+
+    // Default: citra satelit
+    satelliteMap.addTo(mapInstance);
+
+    // Tambahkan label wilayah di atas citra
+    satelliteLabels.addTo(mapInstance);
+
+    // ==============================
+    // LAYER CONTROL
+    // ==============================
+    const baseMaps = {
+        "🛰️ Citra Satelit": satelliteMap,
+        "🗺️ Peta Jalan": streetMap
+    };
+
+    const overlayMaps = {
+        "🏷️ Label Wilayah": satelliteLabels
+    };
+
+    L.control.layers(baseMaps, overlayMaps, {
+        position: 'topright',
+        collapsed: false
+    }).addTo(mapInstance);
+    const fullscreenControl = L.control({ position: 'topleft' });
+
+fullscreenControl.onAdd = function(map) {
+    const container = L.DomUtil.create(
+        'div',
+        'leaflet-bar leaflet-control leaflet-control-fullscreen'
+    );
+
+    const button = L.DomUtil.create('a', '', container);
+
+    button.href = '#';
+    button.title = 'Tampilkan peta layar penuh';
+    button.setAttribute('role', 'button');
+    button.setAttribute('aria-label', 'Tampilkan peta layar penuh');
+
+    button.innerHTML = '<i class="fa-solid fa-expand"></i>';
+
+    L.DomEvent.disableClickPropagation(container);
+
+    L.DomEvent.on(button, 'click', function(e) {
+        L.DomEvent.stop(e);
+
+        const mapElement = document.getElementById('map-container');
+
+        if (!document.fullscreenElement) {
+            mapElement.requestFullscreen();
+        } else {
+            document.exitFullscreen();
+        }
+    });
+
+    return container;
+};
+
+fullscreenControl.addTo(mapInstance);
+document.addEventListener('fullscreenchange', function() {
+
+    const fullscreenButton =
+        document.querySelector('.leaflet-control-fullscreen a');
+
+    if (!fullscreenButton) return;
+
+    if (document.fullscreenElement) {
+        fullscreenButton.innerHTML =
+            '<i class="fa-solid fa-compress"></i>';
+
+        fullscreenButton.title =
+            'Keluar dari layar penuh';
+    } else {
+        fullscreenButton.innerHTML =
+            '<i class="fa-solid fa-expand"></i>';
+
+        fullscreenButton.title =
+            'Tampilkan peta layar penuh';
+    }
+
+    setTimeout(function() {
+        mapInstance.invalidateSize();
+    }, 200);
+});   
+
+    // ==============================
+    // LAYER MARKER RISIKO
+    // ==============================
+    mapMarkersLayer = L.layerGroup().addTo(mapInstance);
+
+    renderMapMarkers();
+}
+
+        function renderMapMarkers() {
+            if (!mapMarkersLayer) return;
+            mapMarkersLayer.clearLayers();
+
+            filteredDataset.forEach(item => {
+                let color = "#2E7D32"; // Low - Green
+                if (item.tingkat_risiko === "Tinggi") color = "#C62828"; // High - Red
+                else if (item.tingkat_risiko === "Sedang") color = "#F9A825"; // Medium - Yellow
+
+                let circle = L.circleMarker([item.lat, item.lng], {
+                    radius: item.tingkat_risiko === "Tinggi" ? 8 : 6,
+                    fillColor: color,
+                    color: "#FFFFFF",
+                    weight: 1.5,
+                    opacity: 1,
+                    fillOpacity: 0.85
+                });
+
+                // Detailed Popup Content
+                let popupContent = `
+    <div class="p-3 max-w-xs space-y-2 text-xs">
+
+        <div class="popup-drag-handle border-b border-gray-200 pb-1.5 flex justify-between items-start">
+            <div>
+                <h4 class="font-bold text-gray-900 text-sm leading-tight">${item.nama_kabupaten}</h4>
+                <span class="text-gray-500 text-[11px]">${item.provinsi}</span>
+            </div>
+
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold text-white"
+                  style="background-color: ${color}">
+                ${item.tingkat_risiko}
+            </span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-1.5 bg-gray-50 p-2 rounded-lg text-[11px]">
+            <div>
+                <span class="text-gray-400 block">Prob. Risiko</span>
+                <strong class="text-red-700 font-extrabold text-xs">
+                    ${(item.probabilitas_risiko).toFixed(4)}
+                </strong>
+            </div>
+
+            <div>
+                <span class="text-gray-400 block">Prioritas</span>
+                <strong class="text-gray-800">
+                    ${item.prioritas_pencegahan}
+                </strong>
+            </div>
+        </div>
+
+        <div class="space-y-1 text-[11px] text-gray-600 border-t border-gray-100 pt-1.5">
+
+            <div class="flex justify-between">
+                <span>NDVI:</span>
+                <strong>${item.NDVI}</strong>
+            </div>
+
+            <div class="flex justify-between">
+                <span>Suhu Udara:</span>
+                <strong>${item.suhu_udara} °C</strong>
+            </div>
+
+            <div class="flex justify-between">
+                <span>Curah Hujan:</span>
+                <strong>${item.curah_hujan} mm</strong>
+            </div>
+
+            <div class="flex justify-between">
+                <span>Kelembapan:</span>
+                <strong>${item.kelembapan_udara}%</strong>
+            </div>
+
+            <div class="flex justify-between">
+                <span>Kecepatan Angin:</span>
+                <strong>${item.kecepatan_angin} km/h</strong>
+            </div>
+
+            <div class="flex justify-between">
+    <span>Elevasi / Akses:</span>
+    <strong>
+        ${item.elevasi_m}m / ${item.jarak_ke_jalan_km}km
+    </strong>
+</div>
+
+${(() => {
+    const recommendation = getPreventionRecommendation(item);
+
+    return `
+        <div class="border-t border-gray-200 pt-2 mt-2">
+
+            <div class="flex items-center gap-1.5 mb-1.5">
+                <i class="fa-solid fa-shield-halved text-red-700"></i>
+                <span class="font-bold text-gray-800">
+                    ${recommendation.title}
+                </span>
+            </div>
+
+            <div class="bg-red-50 border border-red-100 rounded-lg p-2">
+
+                <div class="text-[10px] font-bold text-red-800 mb-1">
+                    ${recommendation.priority}
+                </div>
+
+                <ul class="space-y-1 text-[10px] text-gray-700 list-disc pl-4">
+                    ${recommendation.actions.map(action => `
+                        <li>${action}</li>
+                    `).join("")}
+                </ul>
+
+            </div>
+        </div>
+    `;
+})()}
+`;
+            
+// ==========================================
+// REKOMENDASI PENANGANAN BERDASARKAN RISIKO
+// ==========================================
+function getPreventionRecommendation(item) {
+
+    if (item.tingkat_risiko === "Tinggi") {
+
+        let actions = [
+            "Patroli dan pemantauan lapangan ditingkatkan.",
+            "Deteksi dini hotspot dilakukan secara lebih intensif.",
+            "Kesiapsiagaan personel dan peralatan pemadaman ditingkatkan."
+        ];
+
+        // Kondisi meteorologi
+        if (item.suhu_udara >= 33) {
+            actions.push("Waspadai kondisi suhu udara tinggi yang dapat meningkatkan potensi kekeringan.");
+        }
+
+        if (item.kelembapan_udara <= 60) {
+            actions.push("Prioritaskan pemantauan karena kelembapan udara relatif rendah.");
+        }
+
+        if (item.curah_hujan <= 100) {
+            actions.push("Perkuat pemantauan pada periode curah hujan rendah.");
+        }
+
+        if (item.kecepatan_angin >= 18) {
+            actions.push("Siapkan respons cepat karena angin relatif tinggi dapat mempercepat penyebaran api.");
+        }
+
+        // Aksesibilitas
+        if (item.jarak_ke_jalan_km >= 8) {
+            actions.push("Siapkan alternatif akses menuju lokasi karena jarak dari jaringan jalan relatif jauh.");
+        }
+
+        return {
+            title: "Rekomendasi Penanganan",
+            priority: "Prioritas Utama",
+            actions: actions
+        };
+
+    } else if (item.tingkat_risiko === "Sedang") {
+
+        return {
+            title: "Rekomendasi Penanganan",
+            priority: "Prioritas Menengah",
+            actions: [
+                "Lakukan pemantauan kondisi wilayah secara berkala.",
+                "Perkuat sistem peringatan dini dan pemantauan hotspot.",
+                "Sosialisasikan pencegahan pembakaran lahan kepada masyarakat."
+            ]
+        };
+
+    } else {
+
+        return {
+            title: "Rekomendasi Penanganan",
+            priority: "Prioritas Rendah",
+            actions: [
+                "Lakukan pemantauan rutin terhadap perubahan kondisi lingkungan.",
+                "Pertahankan kesiapsiagaan dan sistem deteksi dini.",
+                "Lakukan edukasi pencegahan kebakaran secara berkala."
+            ]
+        };
+    }
+}
+
+                circle.bindPopup(popupContent);
+                circle.on('popupopen', function (e) {
+
+    const popup = e.popup;
+    const popupElement = popup.getElement();
+
+    if (!popupElement) return;
+
+    const dragHandle = popupElement.querySelector('.popup-drag-handle');
+
+    if (!dragHandle) return;
+
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let startLatLng = null;
+
+    dragHandle.style.cursor = 'grab';
+
+    dragHandle.addEventListener('mousedown', function (event) {
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        isDragging = true;
+
+        startX = event.clientX;
+        startY = event.clientY;
+
+        startLatLng = popup.getLatLng();
+
+        dragHandle.style.cursor = 'grabbing';
+
+        document.addEventListener('mousemove', dragPopup);
+        document.addEventListener('mouseup', stopDrag);
+
+    });
+
+    function dragPopup(event) {
+
+        if (!isDragging) return;
+
+        event.preventDefault();
+
+        const deltaX = event.clientX - startX;
+        const deltaY = event.clientY - startY;
+
+        const map = popup._map;
+
+        const startPoint = map.latLngToContainerPoint(startLatLng);
+
+        const newPoint = L.point(
+            startPoint.x + deltaX,
+            startPoint.y + deltaY
+        );
+
+        const newLatLng = map.containerPointToLatLng(newPoint);
+
+        popup.setLatLng(newLatLng);
+    }
+
+    function stopDrag() {
+
+        isDragging = false;
+
+        dragHandle.style.cursor = 'grab';
+
+        document.removeEventListener('mousemove', dragPopup);
+        document.removeEventListener('mouseup', stopDrag);
+    }
+
+});
+                mapMarkersLayer.addLayer(circle);
+            });
+        }
+        
+
+        function initCharts() {
+            // 1. Donut Chart (Risk Distribution)
+            const donutCtx = document.getElementById('chart-risk-donut').getContext('2d');
+            riskDonutChart = new Chart(donutCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Risiko Rendah', 'Risiko Sedang', 'Risiko Tinggi'],
+                    datasets: [{
+                        data: [186, 177, 150],
+                        backgroundColor: ['#2E7D32', '#F9A825', '#C62828'],
+                        borderWidth: 2,
+                        borderColor: '#FFFFFF'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    cutout: '70%'
+                }
+            });
+
+            // 2. Bar Chart (High Risk by Island)
+            const barCtx = document.getElementById('chart-island-bar').getContext('2d');
+            islandBarChart = new Chart(barCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Sumatera', 'Kalimantan', 'Jawa', 'Bali & NTT/NTB', 'Sulawesi', 'Papua & Maluku'],
+                    datasets: [{
+                        label: 'Wilayah Risiko Tinggi',
+                        data: [42, 38, 25, 22, 18, 5],
+                        backgroundColor: '#B71C1C',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+
+            // 3. Feature Importance Horizontal Bar Chart
+            const featCtx = document.getElementById('chart-feature-importance').getContext('2d');
+            featureChart = new Chart(featCtx, {
+                type: 'bar',
+                data: {
+                    labels: FEATURE_IMPORTANCE.map(f => f.factor),
+                    datasets: [{
+                        label: 'Nilai Feature Importance',
+                        data: FEATURE_IMPORTANCE.map(f => f.importance),
+                        backgroundColor: FEATURE_IMPORTANCE.map(f => f.color),
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return ` Feature Importance: ${context.raw} (${(context.raw * 100).toFixed(2)}%)`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { beginAtZero: true, max: 0.25 }
+                    }
+                }
+            });
+        }
+
+        function populateProvinceDropdowns() {
+            let provinces = [...new Set(dataset.map(d => d.provinsi))].sort();
+            
+            let selects = ['filter-provinsi', 'map-filter-prov', 'priority-prov-filter', 'full-data-prov-filter'];
+            selects.forEach(id => {
+                let el = document.getElementById(id);
+                if (!el) return;
+                let currentVal = el.value;
+                el.innerHTML = '<option value="">Semua Provinsi</option>';
+                provinces.forEach(p => {
+                    let opt = document.createElement('option');
+                    opt.value = p;
+                    opt.textContent = p;
+                    el.appendChild(opt);
+                });
+                el.value = currentVal;
+            });
+        }
+
+        function renderFeatureRanking() {
+            let rankingContainer = document.getElementById('feature-ranking-list');
+            if (!rankingContainer) return;
+            rankingContainer.innerHTML = '';
+
+            FEATURE_IMPORTANCE.forEach((item, idx) => {
+                let pct = (item.importance * 100).toFixed(2);
+                let row = document.createElement('div');
+                row.className = "flex items-center justify-between text-xs p-1.5 rounded hover:bg-slate-100 transition";
+                row.innerHTML = `
+                    <div class="flex items-center space-x-2">
+                        <span class="w-5 h-5 rounded-full bg-slate-200 text-gray-700 font-bold text-[10px] flex items-center justify-center">${idx + 1}</span>
+                        <i class="fa-solid ${item.icon} w-4 text-center" style="color: ${item.color}"></i>
+                        <span class="font-medium text-gray-800">${item.factor}</span>
+                    </div>
+                    <span class="font-bold text-gray-900">${pct}%</span>
+                `;
+                rankingContainer.appendChild(row);
+            });
+        }
+
+        function applyGlobalFilters() {
+            let provVal = document.getElementById('filter-provinsi').value;
+            let riskVal = document.getElementById('filter-risiko').value;
+            let searchVal = document.getElementById('filter-search').value.toLowerCase().trim();
+
+            filteredDataset = dataset.filter(item => {
+                let matchProv = !provVal || item.provinsi === provVal;
+                let matchRisk = !riskVal || item.tingkat_risiko === riskVal;
+                let matchSearch = !searchVal || item.nama_kabupaten.toLowerCase().includes(searchVal) || item.provinsi.toLowerCase().includes(searchVal);
+                return matchProv && matchRisk && matchSearch;
+            });
+
+            // Update KPI cards based on filtered set
+            updateKPICards();
+
+            // Update Map & Charts
+            renderMapMarkers();
+            updateChartsData();
+
+            // Sync tables
+            renderTop5Preview();
+            renderPriorityTable();
+            renderFullDataTable();
+        }
+
+        function resetGlobalFilters() {
+            document.getElementById('filter-provinsi').value = "";
+            document.getElementById('filter-risiko').value = "";
+            document.getElementById('filter-search').value = "";
+            applyGlobalFilters();
+        }
+
+        function updateKPICards() {
+            let total = filteredDataset.length;
+            let rendah = filteredDataset.filter(d => d.tingkat_risiko === "Rendah").length;
+            let sedang = filteredDataset.filter(d => d.tingkat_risiko === "Sedang").length;
+            let tinggi = filteredDataset.filter(d => d.tingkat_risiko === "Tinggi").length;
+
+            document.getElementById('kpi-total').textContent = total;
+            document.getElementById('kpi-rendah').textContent = rendah;
+            document.getElementById('kpi-sedang').textContent = sedang;
+            document.getElementById('kpi-tinggi').textContent = tinggi;
+            document.getElementById('kpi-prioritas').textContent = tinggi;
+
+            let pctRendah = total > 0 ? ((rendah / total) * 100).toFixed(2) : "0.00";
+            let pctSedang = total > 0 ? ((sedang / total) * 100).toFixed(2) : "0.00";
+            let pctTinggi = total > 0 ? ((tinggi / total) * 100).toFixed(2) : "0.00";
+
+            document.getElementById('kpi-rendah-pct').textContent = `${pctRendah}% dari total`;
+            document.getElementById('kpi-sedang-pct').textContent = `${pctSedang}% dari total`;
+            document.getElementById('kpi-tinggi-pct').textContent = `${pctTinggi}% dari total`;
+
+            document.getElementById('legend-rendah').textContent = rendah;
+            document.getElementById('legend-sedang').textContent = sedang;
+            document.getElementById('legend-tinggi').textContent = tinggi;
+        }
+
+        function updateChartsData() {
+            if (riskDonutChart) {
+                let rendah = filteredDataset.filter(d => d.tingkat_risiko === "Rendah").length;
+                let sedang = filteredDataset.filter(d => d.tingkat_risiko === "Sedang").length;
+                let tinggi = filteredDataset.filter(d => d.tingkat_risiko === "Tinggi").length;
+                riskDonutChart.data.datasets[0].data = [rendah, sedang, tinggi];
+                riskDonutChart.update();
+            }
+
+            if (islandBarChart) {
+                const islands = ['Sumatera', 'Kalimantan', 'Jawa', 'Bali & Nusa Tenggara', 'Sulawesi', 'Papua & Maluku'];
+                let counts = islands.map(isl => {
+                    return filteredDataset.filter(d => d.pulau === isl && d.tingkat_risiko === "Tinggi").length;
+                });
+                islandBarChart.data.datasets[0].data = counts;
+                islandBarChart.update();
+            }
+        }
+
+        function renderTop5Preview() {
+            let tbody = document.getElementById('top5-preview-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            let sorted = [...filteredDataset].sort((a, b) => b.probabilitas_risiko - a.probabilitas_risiko).slice(0, 5);
+
+            sorted.forEach((item, index) => {
+                let tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 transition font-medium";
+                tr.innerHTML = `
+                    <td class="p-3 font-bold text-gray-500">#${index + 1}</td>
+                    <td class="p-3 font-bold text-gray-900">${item.nama_kabupaten}</td>
+                    <td class="p-3 text-gray-600">${item.provinsi}</td>
+                    <td class="p-3 font-extrabold text-red-700">${item.probabilitas_risiko.toFixed(4)}</td>
+                    <td class="p-3">
+                        <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-100 text-red-800">🔴 ${item.tingkat_risiko}</span>
+                    </td>
+                    <td class="p-3">
+                        <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-900 text-white">🔴 ${item.prioritas_pencegahan}</span>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderPriorityTable() {
+            let tbody = document.getElementById('priority-table-body');
+            if (!tbody) return;
+
+            let searchVal = (document.getElementById('priority-search')?.value || "").toLowerCase();
+            let levelVal = document.getElementById('priority-level-filter')?.value || "";
+            let provVal = document.getElementById('priority-prov-filter')?.value || "";
+
+            let items = filteredDataset.filter(item => {
+                let mSearch = !searchVal || item.nama_kabupaten.toLowerCase().includes(searchVal) || item.provinsi.toLowerCase().includes(searchVal);
+                let mLevel = !levelVal || item.prioritas_pencegahan === levelVal;
+                let mProv = !provVal || item.provinsi === provVal;
+                return mSearch && mLevel && mProv;
+            });
+
+            items.sort((a, b) => b.probabilitas_risiko - a.probabilitas_risiko);
+
+            // Pagination
+            let total = items.length;
+            let start = (priorityCurrentPage - 1) * priorityPageSize;
+            let pagedItems = items.slice(start, start + priorityPageSize);
+
+            tbody.innerHTML = '';
+            pagedItems.forEach((item, idx) => {
+                let badgeClass = item.tingkat_risiko === "Tinggi" ? "bg-red-100 text-red-800" : (item.tingkat_risiko === "Sedang" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800");
+                let prioBadge = item.prioritas_pencegahan === "Prioritas Utama" ? "bg-red-800 text-white" : (item.prioritas_pencegahan === "Prioritas Menengah" ? "bg-amber-500 text-white" : "bg-emerald-700 text-white");
+
+                let tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 transition";
+                tr.innerHTML = `
+                    <td class="p-3 text-center font-bold text-gray-400">${start + idx + 1}</td>
+                    <td class="p-3 font-bold text-gray-800">${item.nama_kabupaten}</td>
+                    <td class="p-3 text-gray-600">${item.provinsi}</td>
+                    <td class="p-3 text-right font-black text-red-700">${item.probabilitas_risiko.toFixed(4)}</td>
+                    <td class="p-3 text-center"><span class="px-2 py-1 rounded-md text-[10px] font-bold ${badgeClass}">${item.tingkat_risiko}</span></td>
+                    <td class="p-3 text-center"><span class="px-2 py-1 rounded-md text-[10px] font-bold ${prioBadge}">${item.prioritas_pencegahan}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Pagination UI
+            let infoEl = document.getElementById('priority-pagination-info');
+            if (infoEl) infoEl.textContent = `Menampilkan ${total > 0 ? start + 1 : 0}-${Math.min(start + priorityPageSize, total)} dari ${total} data`;
+            
+            renderPaginationBtns('priority-pagination-btns', Math.ceil(total / priorityPageSize), priorityCurrentPage, (p) => {
+                priorityCurrentPage = p;
+                renderPriorityTable();
+            });
+        }
+
+        function renderFullDataTable() {
+            let tbody = document.getElementById('full-data-table-body');
+            if (!tbody) return;
+
+            let searchVal = (document.getElementById('full-data-search')?.value || "").toLowerCase();
+            let provVal = document.getElementById('full-data-prov-filter')?.value || "";
+            let riskVal = document.getElementById('full-data-risk-filter')?.value || "";
+            let pageSize = parseInt(document.getElementById('full-data-page-size')?.value || 10);
+
+            let items = filteredDataset.filter(item => {
+                let mSearch = !searchVal || item.nama_kabupaten.toLowerCase().includes(searchVal) || item.provinsi.toLowerCase().includes(searchVal);
+                let mProv = !provVal || item.provinsi === provVal;
+                let mRisk = !riskVal || item.tingkat_risiko === riskVal;
+                return mSearch && mProv && mRisk;
+            });
+
+            let total = items.length;
+            let start = (fullDataCurrentPage - 1) * pageSize;
+            let pagedItems = items.slice(start, start + pageSize);
+
+            tbody.innerHTML = '';
+            pagedItems.forEach(item => {
+                let tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 transition";
+                tr.innerHTML = `
+                    <td class="p-2.5 font-bold text-gray-900">${item.nama_kabupaten}</td>
+                    <td class="p-2.5 text-gray-600">${item.provinsi}</td>
+                    <td class="p-2.5 text-gray-500">${item.pulau}</td>
+                    <td class="p-2.5 font-semibold text-gray-700">${item.tahun}</td>
+                    <td class="p-2.5">${item.suhu_udara}</td>
+                    <td class="p-2.5">${item.curah_hujan}</td>
+                    <td class="p-2.5">${item.kelembapan_udara}</td>
+                    <td class="p-2.5">${item.kecepatan_angin}</td>
+                    <td class="p-2.5 font-bold text-emerald-700">${item.NDVI}</td>
+                    <td class="p-2.5 text-gray-500">${item.tutupan_lahan}</td>
+                    <td class="p-2.5">${item.elevasi_m}</td>
+                    <td class="p-2.5">${item.jarak_ke_jalan_km}</td>
+                    <td class="p-2.5 font-bold text-amber-700">${item.hotspot_count}</td>
+                    <td class="p-2.5 font-black text-red-700">${item.probabilitas_risiko.toFixed(4)}</td>
+                    <td class="p-2.5 font-bold text-gray-800">${item.tingkat_risiko}</td>
+                    <td class="p-2.5 font-bold text-red-800">${item.prioritas_pencegahan}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            let infoEl = document.getElementById('full-data-pagination-info');
+            if (infoEl) infoEl.textContent = `Menampilkan ${total > 0 ? start + 1 : 0}-${Math.min(start + pageSize, total)} dari ${total} data`;
+
+            renderPaginationBtns('full-data-pagination-btns', Math.ceil(total / pageSize), fullDataCurrentPage, (p) => {
+                fullDataCurrentPage = p;
+                renderFullDataTable();
+            });
+        }
+
+        function renderPaginationBtns(containerId, totalPages, currentPage, callback) {
+            let container = document.getElementById(containerId);
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (totalPages <= 1) return;
+
+            let prevBtn = document.createElement('button');
+            prevBtn.className = `px-2 py-1 rounded text-xs border font-medium ${currentPage === 1 ? 'text-gray-300 border-gray-200 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100 border-gray-300'}`;
+            prevBtn.innerHTML = '<i class="fa-solid fa-chevron-left"></i>';
+            if (currentPage > 1) prevBtn.onclick = () => callback(currentPage - 1);
+            container.appendChild(prevBtn);
+
+            for (let i = 1; i <= Math.min(totalPages, 5); i++) {
+                let btn = document.createElement('button');
+                btn.className = `px-2.5 py-1 rounded text-xs font-bold border ${i === currentPage ? 'bg-red-800 text-white border-red-800' : 'text-gray-700 hover:bg-gray-100 border-gray-300'}`;
+                btn.textContent = i;
+                btn.onclick = () => callback(i);
+                container.appendChild(btn);
+            }
+
+            let nextBtn = document.createElement('button');
+            nextBtn.className = `px-2 py-1 rounded text-xs border font-medium ${currentPage === totalPages ? 'text-gray-300 border-gray-200 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100 border-gray-300'}`;
+            nextBtn.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
+            if (currentPage < totalPages) nextBtn.onclick = () => callback(currentPage + 1);
+            container.appendChild(nextBtn);
+        }
+
+        document.getElementById('csv-upload-input').addEventListener('change', function(e) {
+            let file = e.target.files[0];
+            if (!file) return;
+
+            Papa.parse(file, {
+                header: true,
+                dynamicTyping: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    if (results.data && results.data.length > 0) {
+                        dataset = results.data.map(row => {
+                            let prob = row.probabilitas_risiko || row.probability || 0.5;
+                            let name = row.nama_kabupaten || row.kabupaten || "Wilayah Custom";
+                            let prov = row.provinsi || "Provinsi Custom";
+                            let pulau = row.pulau || "Indonesia";
+                            let lat = row.lat || -2.5 + (Math.random() - 0.5) * 5;
+                            let lng = row.lng || 118.0 + (Math.random() - 0.5) * 10;
+                            return buildRegencyObject(name, prov, pulau, parseFloat(prob), lat, lng);
+                        });
+                        dataset.sort((a, b) => b.probabilitas_risiko - a.probabilitas_risiko);
+                        populateProvinceDropdowns();
+                        applyGlobalFilters();
+                        alert(`Berhasil memuat ${dataset.length} data wilayah dari CSV!`);
+                    }
+                }
+            });
+        });
+
+        function exportFilteredCSV() {
+            let csv = Papa.unparse(filteredDataset);
+            downloadCSV(csv, "SIJAGA-API_Hasil_Prediksi_Risiko.csv");
+        }
+
+        function exportPriorityCSV() {
+            let priorityData = filteredDataset.map(d => ({
+                Kabupaten_Kota: d.nama_kabupaten,
+                Provinsi: d.provinsi,
+                Probabilitas_Risiko: d.probabilitas_risiko,
+                Tingkat_Risiko: d.tingkat_risiko,
+                Prioritas_Pencegahan: d.prioritas_pencegahan
+            }));
+            let csv = Papa.unparse(priorityData);
+            downloadCSV(csv, "SIJAGA-API_Prioritas_Pencegahan.csv");
+        }
+
+        function exportFullCSV() {
+            let csv = Papa.unparse(dataset);
+            downloadCSV(csv, "SIJAGA-API_Dataset_Lengkap_2025.csv");
+        }
+
+        function downloadCSV(csvContent, fileName) {
+            let blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            let link = document.createElement("a");
+            let url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", fileName);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.page-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('bg-red-50', 'text-red-700', 'shadow-sm', 'font-semibold');
+                btn.classList.add('text-gray-600', 'font-medium');
+            });
+
+            document.getElementById(`page-${tabId}`).classList.remove('hidden');
+            let activeBtn = document.getElementById(`nav-${tabId}`);
+            if (activeBtn) {
+                activeBtn.classList.add('bg-red-50', 'text-red-700', 'shadow-sm', 'font-semibold');
+                activeBtn.classList.remove('text-gray-600');
+            }
+
+            // Page Title Update
+            const titles = {
+                'dashboard': 'Dashboard Utama & Ringkasan Risiko',
+                'map': 'Peta Risiko Kebakaran Hutan & Lahan',
+                'priority': 'Matriks Prioritas Pencegahan Kebakaran',
+                'factors': 'Analisis Faktor Risiko & Feature Importance',
+                'data': 'Dataset Wilayah Pengujian Tahun 2025',
+                'about': 'Tentang & Metodologi SIJAGA-API'
+            };
+            document.getElementById('page-title').querySelector('span').textContent = titles[tabId] || 'SIJAGA-API';
+
+            if (tabId === 'map' && mapInstance) {
+                setTimeout(() => mapInstance.invalidateSize(), 200);
+            }
+
+            // Close mobile sidebar on select
+            if (window.innerWidth < 768) {
+                document.getElementById('sidebar').classList.add('-translate-x-full');
+            }
+        }
+
+        function setupSidebarToggle() {
+            document.getElementById('open-sidebar-btn').addEventListener('click', () => {
+                document.getElementById('sidebar').classList.remove('-translate-x-full');
+            });
+            document.getElementById('close-sidebar-btn').addEventListener('click', () => {
+                document.getElementById('sidebar').classList.add('-translate-x-full');
+            });
+        }
+    </script>
+</body>
+</html>
